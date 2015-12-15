@@ -1,0 +1,179 @@
+#!/usr/bin/python
+# -*- coding: utf-8 -*-
+
+DEBUG = 1
+
+from filehandler import *
+from errorhandler import *
+
+class GromacsAtom:
+    def __init__(self, natom, position, name, velocity=[]):
+        self.natom = natom
+        self.position = position
+        self.name = name
+        self.velocity = velocity
+
+class GromacsResidue:
+    def __init__(self, nresidue, name, atoms=[]):
+        self.nresidue = nresidue
+        self.name = name
+        self.atoms = atoms
+
+class GromacsSystem:
+    def __init__(self, title="", dimentions=[], natoms=0, residues=[]):
+        self.title = title
+        self.dimentions = dimentions
+        self.natoms = natoms
+        self.residues = residues
+        
+def _lineToAtom(line):
+    return GromacsAtom(int(line[15:20]),
+                       list(map( float, line[20:44].split() )),
+                       line[10:15].split()[0]
+                       )
+
+def _linesToResidue(lines):
+    return GromacsResidue(int(lines[0][0:5]),
+                          lines[0][5:10].split()[0],
+                          [_lineToAtom(line) for line in lines]
+                          )
+#BUG: If the residue is the last line to scan AND the residue has changed,
+#       a bad index is reached.
+def readGro(filename):
+    if getExtension(filename) != "gro":
+        raise InputError(filename,"Input file must be .gro")
+    with open(filename, "r") as file:
+        input_lines = file.readlines()
+        out_system = GromacsSystem(input_lines[0].split("\n")[0],
+                               list(map( float, input_lines[-1].split())),
+                               int(input_lines[1])
+                               )
+        input_lines = input_lines[2: (len(input_lines)-1)]
+        res_start = 0
+        current_res = None
+        for line_scan in input_lines:
+            if (current_res == None):
+                current_res = int(line_scan[0:5])
+                pass
+            elif line_scan == input_lines[-1]:
+                res_end = len(input_lines)
+                out_system.residues.append(_linesToResidue(
+                                            input_lines[res_start:res_end]
+                                            ))
+                break
+            elif (int(line_scan[0:5])) == current_res:
+                pass
+            elif (int(line_scan[0:5])) != current_res:
+                res_end = input_lines.index(line_scan)
+                out_system.residues.append(_linesToResidue( 
+                                            input_lines[res_start:res_end]
+                                            ))
+                current_res = int(line_scan[0:5])
+                pass
+    return out_system
+    
+
+"""
+def readGro(filename):
+    #Scraps .gro file and will return a GromacsSystem instance.
+    if getExtension(filename) != "gro":
+        raise InputError(filename,"Input file must be .gro")
+    
+    with open(filename, 'r') as file:
+        lines = file.readlines()
+        system = GromacsSystem()
+        system.title = lines[0].split("\n")[0] #Remove end of line
+        system.natoms = int(lines[1])
+        lines = lines[2:] #Remove information that has already been scrapped.
+        list(map(float, lines[-1].split()))
+        system.dimentions = list(map( float, lines.pop().split())) #Define the 
+        #system's dimentions and remove that line.
+        #Now the number of lines remaining should be equal to the number of 
+        #atoms in the system
+        if DEBUG == 1:
+            print("DEBUG: Checking if number of atoms equals number of lines "
+            "minus three...")
+            if len(lines) == system.natoms:
+                print("DEBUG: Passed.")
+            else:
+                print("DEBUG: WARNING, number of atoms not equal to number "
+                "of lines, program will likely fail.")
+        current_nresidue = "NaN"
+        if DEBUG == 1: print("DEBUG: Scanning atoms...")
+        for line in lines:
+            current_atom =  GromacsAtom(int(line[15:20]), 
+                            list(map(float,line[20:45].split())),
+                            line[10:15].split()[0])
+            #TODO: Define the atom's velocity if it exist.
+            if current_nresidue == "NaN":
+                current_nresidue = int(line[0:5])
+                if DEBUG == 1: print("DEBUG: Previous residue not "
+                "found, setting first residue number as "+
+                str(current_nresidue))
+                current_residue = GromacsResidue(current_nresidue, 
+                                    line[5:10].split()[0])
+                current_residue.atoms.append(current_atom)
+                pass
+                #If the residue number is NaN, define the residue number as 
+                #the first residue number in the file and append the current 
+                #atom to it.
+            elif current_nresidue == int(line[0:5]):
+                current_residue.atoms.append(current_atom)
+                pass
+                #If the residue number equals the last one used and append the 
+                #current atom to it. 
+            else:
+                if DEBUG == 1: print("DEBUG: Residue number has changed."
+                "Appending residue "+current_residue.name+" with "+
+                str(len(current_residue.atoms))+" atoms.")
+                system.residues.append(GromacsResidue(
+                    current_residue.nresidue,
+                    current_residue.name,
+                    current_residue.atoms))
+                del current_residue.atoms[:]
+                del current_residue.nresidue
+                del current_residue.name
+                del current_residue
+                current_nresidue = int(line[0:5])
+                current_residue = GromacsResidue(current_nresidue,
+                                                 line[5:10].split()[0])
+                current_residue.atoms.append(current_atom)
+                if DEBUG == 1: print("DEBUG: Flushing current residue, "
+                "new residue has "+str(len(current_residue.atoms))+
+                " atoms")                
+                pass
+                #If the residue number has changed, append the current residue
+                #to the system, flush its name and create another in its place 
+                #with the new number.
+        system.residues.append(GromacsResidue(
+                    current_residue.nresidue,
+                    current_residue.name,
+                    current_residue.atoms))
+        del current_residue.atoms[:]
+        del current_residue.nresidue
+        del current_residue.name
+        del current_residue
+        #Upon finishing, append the last residue to the system and return 
+        #the resultant system
+    return system
+"""
+                
+        
+#BUG: Atom number must change independently from what's in the file.
+def writeGro(system, output):
+    with open(output, "w") as file:
+        file.write(system.title+"\n")
+        file.write(str(system.natoms).rjust(5)+"\n")
+        for nres in range(len(system.residues)):
+            for natm in range(len(system.residues[nres].atoms)):
+                file.write(str(nres+1).rjust(5)+
+                           system.residues[nres].name.ljust(5)+
+                           system.residues[nres].atoms[natm].name.ljust(5)+
+                           str(natm+1).rjust(5)+
+                           '{:>8}{:>8}{:>8}'.format(*['%.3f'%x for x in
+                            system.residues[nres].atoms[natm].position])+"\n")
+        file.write('{:>10}{:>10}{:>10}'.format(*['%.5f'%x for x in
+                    system.dimentions]))
+    return True
+
+
